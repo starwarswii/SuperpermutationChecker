@@ -1,10 +1,21 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
+
+#include <mpi.h>
+//#include <pthread.h>
+
+//when running on the BG/Q, either uncomment this or compile with -DBGQ
+//#define BGQ
+
+#ifdef BGQ
+	#include <hwi/include/bqc/A2_inlines.h> //for GetTimeBase() on BG/Q
+	#define frequency 1600000000.0 //BG/Q processor frequency
+#else
+	#define GetTimeBase MPI_Wtime
+	#define frequency 1.0 //Wtime already returns seconds, so we divide by 1
+#endif
 
 FILE* file;
-
 
 //length of number in file
 int length;
@@ -30,11 +41,37 @@ int factorial(int n) {
 	return result;
 }
 
+//converts a character to an int,
+//also mapping each one lower
+//e.g '1' -> 0, 'a' -> 9
+int toInt(char c) {
+
+	//TODO could be sped up slightly
+	if (c >= '1' && c <= '9') {
+		return c - '1';
+	}
+
+	if (c >= 'a' && c <= 'f') {
+		return c - 'a' + 9;
+	}
+	
+	return -1;
+}
+
+char charTable[15] = {
+	'1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'
+};
+
+//converts into to char, mapping one higher
+char toChar(int i) {
+	return charTable[i];
+}
+
 //loads a string into an int array
 //e.g '1' becomes 0
 void loadIntoInt(char* string, int* array) {
 	for (int i = 0; i < N; i++) {
-		array[i] = string[i] - '0' - 1;
+		array[i] = toInt(string[i]);
 	}
 }
 
@@ -42,7 +79,7 @@ void loadIntoInt(char* string, int* array) {
 //e.g. 0 becomes '1'
 void loadIntoString(int* array, char* string) {
 	for (int i = 0; i < N; i++) {
-		string[i] = array[i] + '0' + 1;
+		string[i] = toChar(array[i]);
 	}
 }
 
@@ -121,7 +158,6 @@ int getNumber(int* perm) {
 
 //returns the number corresponding to the given permutation string
 int permutationToNumber(char* permString) {
-	printf("the string is %.*s\n", N, permString);
 	loadIntoInt(permString, tempPerm);
 	int k = getNumber(tempPerm);
 	
@@ -169,23 +205,10 @@ void freeMemory() {
 //the main code
 void checkNumber() {
 	
-	printf("checklist is %d, which is %d!\n", permutationCount, N);
+	long long startTime = GetTimeBase();
 	
 	for (int i = 0; i < length-N+1; i++) {
 		int k = permutationToNumber(data+i);
-		
-		
-		for (int j = 0; j < N; j++) {
-			printf("looking at data %d\n", i+j);
-		}
-		printf("\n");
-		
-		printf("k is %d, less than size %d\n", k, permutationCount);
-		
-		if (k >= permutationCount) {
-			printf("==============================woah!, that's not supposed to happen!\n");
-			exit(69);
-		}
 		
 		if (k != -1 && !checklist[k]) {
 			checklist[k] = 1;
@@ -198,7 +221,7 @@ void checkNumber() {
 	for (int i = 0; i < permutationCount; i++) {
 		if (!checklist[i]) {
 			char* perm = numberToPermutation(i);
-			printf("missing permutation %d: %.*s\n", i, N, perm);
+			printf("missing permutation number %d: [%.*s]\n", i, N, perm);
 			good = 0;
 		}
 	}
@@ -209,15 +232,34 @@ void checkNumber() {
 		printf("number is not good\n");
 	}
 	
+	long long endTime = GetTimeBase();
+	double totalTime = ((double)(endTime-startTime))/frequency;
+	printf("\ntime:\n");
+	printf("%f\n\n", totalTime);
+	
 }
 
 int main(int argc, char** argv) {
+	
+	MPI_Init(&argc, &argv);
+	
+	int numRanks;
+	int rank;
+	
+	MPI_Comm_size(MPI_COMM_WORLD, &numRanks);
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+	
+	if (numRanks > 1) {
+		if (rank == 0) {
+			printf("error: this is the serial version, and should only be run with one rank\n");	
+		}
+		exit(1);
+	}
 
 	if (argc < 3) {
 		printf("usage: %s N inputFile\n", argv[0]);
 		exit(1);
 	}
-
 
 	N = atoi(argv[1]);
 
@@ -235,6 +277,7 @@ int main(int argc, char** argv) {
 	//then we go back to the start of the file
 	fseek(file, 0, SEEK_SET);
 	
+	printf("N = %d\n", N);
 	printf("file size detected as %d\n", length);
 
 	allocateMemory();
@@ -245,28 +288,9 @@ int main(int argc, char** argv) {
 
 	
 	checkNumber();
-	
-	
-	
-	
-	
-	//char* string = malloc(N*sizeof(char));
-	
-	// int max = factorial(N);
-	
-	// for (int i = 0; i < max+1; i++) {
-		// char* p = numberToPermutation(i);
-		
-		// int k = permutationToNumber(p);
-		
-		//prints non-null terminated string of length N
-		// printf("permutation %d=%d: %.*s\n", i, k, N, p);
-	// }
-	
-	//free(string);
-	
 
 	freeMemory();
 	
+	MPI_Finalize();
 	return 0;
 }
