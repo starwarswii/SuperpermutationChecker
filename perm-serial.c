@@ -101,13 +101,14 @@ int getNumber(int* perm) {
 	}
 	
 	for (int i = 0; i < N-1; i++) {
-		//int posPerm = pos[perm[i]];
+		int posPerm = pos[perm[i]];
+		int elemsni1 = elems[N-i-1];
 		
-		k += m * pos[perm[i]];
+		k += m * posPerm;
 		m *= (N-i);
 		
-		pos[elems[N-i-1]] = pos[perm[i]];
-		elems[pos[perm[i]]] = elems[N-i-1];
+		pos[elemsni1] = posPerm;
+		elems[posPerm] = elemsni1;
 	}
 	
 	return k;
@@ -178,7 +179,7 @@ int main(int argc, char** argv) {
 	
 	//char* string = malloc(N*sizeof(char));
 	
-	int max = 4*3*2*1;
+	int max = factorial(N);
 	
 	for (int i = 0; i < max+1; i++) {
 		char* p = numberToPermutation(i);
