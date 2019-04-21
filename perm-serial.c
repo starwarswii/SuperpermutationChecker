@@ -4,6 +4,9 @@
 #include <mpi.h>
 //#include <pthread.h>
 
+//example compile and run:
+// mpicc -Wall perm-serial.c && ./a.out 9 tests/valid9.in
+
 //when running on the BG/Q, either uncomment this or compile with -DBGQ
 //#define BGQ
 
