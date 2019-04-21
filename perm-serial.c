@@ -12,85 +12,136 @@ int length;
 //number of symbols
 int N;
 
-char* data; //TODO rename
+char* data; //TODO rename?
+
+int factorial(int n) {
+	
+	int result = 1;
+	
+	for (int i = 2; i <= n; i++) {
+		result *= i;
+	}
+	
+	return result;
+}
 
 //loads a string into an int array
+//e.g '1' becomes 0
 void loadIntoInt(char* string, int* array) {
 	for (int i = 0; i < N; i++) {
-		array[i] = string[i] - '0';
+		array[i] = string[i] - '0' - 1;
 	}
 }
 
 //loads an int array into a string
+//e.g. 0 becomes '1'
 void loadIntoString(int* array, char* string) {
 	for (int i = 0; i < N; i++) {
-		string[i] = array[i] + '0';
+		string[i] = array[i] + '0' + 1;
 	}
 }
 
+//used in both permutation functions
+int* elems;
+
+//used in getPermutation()
+int* permuted;
+
+//used in getNumber()
+int* pos;
+
+//used in permutationToNumber()
+int* tempPerm;
+
+//used in numberToPermutation()
+//TODO maybe only initalize some of this stuff when needed
+//as it will only be used in an error case
+char* outString;
+
 //returns the permutation corresponding
 //to the given number k
-int* perm(int k) {
+int* getPermutation(int k) {
 	int ind;
 	int m = k;
 	
-	int* permuted = malloc(N*sizeof(int));
-	int* elems = malloc(N*sizeof(int));
-	
 	for (int i = 0; i < N; i++) {
-		elems[i] = i; //added+1
+		elems[i] = i;
 	}
 	
 	for (int i = 0; i < N; i++) {
 		ind = m % (N-i);
-		m /= (N-i); // added /=
+		m /= (N-i);
 		
 		permuted[i] = elems[ind];
 		elems[ind] = elems[N-i-1];
 	}
 	
-	free(elems);
-	
 	return permuted;
 }
 
+char* numberToPermutation(int k) {
+	int* p = getPermutation(k);
+	
+	loadIntoString(p, outString);
+	
+	return outString;
+}
+
+
+
 //returns the number corresponding to the given permutation
-int inv(int* perm) {
+int getNumber(int* perm) {
 	
 	int k = 0;
 	int m = 1;
 	
-	int* pos = malloc(N*sizeof(int));
-	int* elems = malloc(N*sizeof(int));
-	
 	for (int i = 0; i < N; i++) {
 		pos[i] = i;
-		elems[i] = i; //added +1
+		elems[i] = i;
 	}
 	
 	for (int i = 0; i < N-1; i++) {
 		//int posPerm = pos[perm[i]];
 		
 		k += m * pos[perm[i]];
-		m *= (N-i); //added *=
+		m *= (N-i);
 		
 		pos[elems[N-i-1]] = pos[perm[i]];
 		elems[pos[perm[i]]] = elems[N-i-1];
 	}
 	
-	free(pos);
-	free(elems);
-	
 	return k;
+}
+
+//returns the number corresponding to the given permutation string
+int permutationToNumber(char* permString) {
+	loadIntoInt(permString, tempPerm);
+	return getNumber(tempPerm);
 }
 
 
 void allocateMemory() {
 	data = malloc(length*sizeof(char));
+	
+	elems = malloc(N*sizeof(int));
+	permuted = malloc(N*sizeof(int));
+	pos = malloc(N*sizeof(int));
+	
+	tempPerm = malloc(N*sizeof(int));
+	outString = malloc(N*sizeof(char));
+	
+	//used in permutationToNumber()
 }
 
 void freeMemory() {
 	free(data);
+	
+	free(elems);
+	free(permuted);
+	free(pos);
+	
+	free(tempPerm);
+	free(outString);
 }
 
 int main(int argc, char** argv) {
@@ -118,31 +169,30 @@ int main(int argc, char** argv) {
 	fclose(file);
 
 	
-	freeMemory();
+	
 	
 	//TODO actually check data
 
 	
 	
 	
-	char* string = malloc(N*sizeof(char));
+	//char* string = malloc(N*sizeof(char));
 	
 	int max = 4*3*2*1;
 	
 	for (int i = 0; i < max+1; i++) {
-		int* p = perm(i);
-		loadIntoString(p, string);
+		char* p = numberToPermutation(i);
 		
-		int k = inv(p);
-		
-		free(p);
+		int k = permutationToNumber(p);
 		
 		//prints non-null terminated string of length N
-		printf("permutation %d=%d: %.*s\n", i, k, N, string);
+		printf("permutation %d=%d: %.*s\n", i, k, N, p);
 	}
 	
-	free(string);
+	//free(string);
 	
 
+	freeMemory();
+	
 	return 0;
 }
