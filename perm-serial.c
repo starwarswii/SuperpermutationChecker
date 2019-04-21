@@ -14,6 +14,11 @@ int N;
 
 char* data; //TODO rename?
 
+//should contain all ones if has all permutations
+//is char as will only hold 0 or 1. could probably be unsigned : byte
+char* checklist;
+int permutationCount;
+
 int factorial(int n) {
 	
 	int result = 1;
@@ -116,13 +121,29 @@ int getNumber(int* perm) {
 
 //returns the number corresponding to the given permutation string
 int permutationToNumber(char* permString) {
+	printf("the string is %.*s\n", N, permString);
 	loadIntoInt(permString, tempPerm);
-	return getNumber(tempPerm);
+	int k = getNumber(tempPerm);
+	
+	//getNumber can return invalid permutation numbers
+	//if the given string has duplicate numbers
+	//in this case we return -1 to indicate it matches no permutation
+	if (k >= permutationCount) {
+		return -1;
+	}
+	
+	return k;
 }
 
 
 void allocateMemory() {
+	
+	permutationCount = factorial(N);
+	
 	data = malloc(length*sizeof(char));
+	
+	//fill with zeros
+	checklist = calloc(permutationCount, sizeof(char));
 	
 	elems = malloc(N*sizeof(int));
 	permuted = malloc(N*sizeof(int));
@@ -131,11 +152,11 @@ void allocateMemory() {
 	tempPerm = malloc(N*sizeof(int));
 	outString = malloc(N*sizeof(char));
 	
-	//used in permutationToNumber()
 }
 
 void freeMemory() {
 	free(data);
+	free(checklist);
 	
 	free(elems);
 	free(permuted);
@@ -145,10 +166,55 @@ void freeMemory() {
 	free(outString);
 }
 
+//the main code
+void checkNumber() {
+	
+	printf("checklist is %d, which is %d!\n", permutationCount, N);
+	
+	for (int i = 0; i < length-N+1; i++) {
+		int k = permutationToNumber(data+i);
+		
+		
+		for (int j = 0; j < N; j++) {
+			printf("looking at data %d\n", i+j);
+		}
+		printf("\n");
+		
+		printf("k is %d, less than size %d\n", k, permutationCount);
+		
+		if (k >= permutationCount) {
+			printf("==============================woah!, that's not supposed to happen!\n");
+			exit(69);
+		}
+		
+		if (k != -1 && !checklist[k]) {
+			checklist[k] = 1;
+		}
+		
+	}
+	
+	int good = 1;
+	printf("checking number...\n");
+	for (int i = 0; i < permutationCount; i++) {
+		if (!checklist[i]) {
+			char* perm = numberToPermutation(i);
+			printf("missing permutation %d: %.*s\n", i, N, perm);
+			good = 0;
+		}
+	}
+	
+	if (good) {
+		printf("number is good!\n");
+	} else {
+		printf("number is not good\n");
+	}
+	
+}
+
 int main(int argc, char** argv) {
 
-	if (argc < 4) {
-		printf("usage: %s N inputFile length\n", argv[0]);
+	if (argc < 3) {
+		printf("usage: %s N inputFile\n", argv[0]);
 		exit(1);
 	}
 
@@ -157,12 +223,20 @@ int main(int argc, char** argv) {
 
 	file = fopen(argv[2], "r");
 	if (file == NULL) {
-		printf("could not open input file %s/n", argv[1]);
+		printf("could not open input file %s/n", argv[2]);
 		exit(1);
 	}
 
-	length = atoi(argv[3]);
+	//we get the length of the file by seeking to the end and
+	//then checking where we are
+	fseek(file, 0, SEEK_END);
+	length = ftell(file);
 	
+	//then we go back to the start of the file
+	fseek(file, 0, SEEK_SET);
+	
+	printf("file size detected as %d\n", length);
+
 	allocateMemory();
 
 	//read length bytes into data
@@ -170,25 +244,24 @@ int main(int argc, char** argv) {
 	fclose(file);
 
 	
+	checkNumber();
 	
 	
-	//TODO actually check data
-
 	
 	
 	
 	//char* string = malloc(N*sizeof(char));
 	
-	int max = factorial(N);
+	// int max = factorial(N);
 	
-	for (int i = 0; i < max+1; i++) {
-		char* p = numberToPermutation(i);
+	// for (int i = 0; i < max+1; i++) {
+		// char* p = numberToPermutation(i);
 		
-		int k = permutationToNumber(p);
+		// int k = permutationToNumber(p);
 		
 		//prints non-null terminated string of length N
-		printf("permutation %d=%d: %.*s\n", i, k, N, p);
-	}
+		// printf("permutation %d=%d: %.*s\n", i, k, N, p);
+	// }
 	
 	//free(string);
 	
