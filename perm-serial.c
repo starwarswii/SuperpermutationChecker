@@ -47,6 +47,8 @@ int factorial(int n) {
 //converts a character to an int,
 //also mapping each one lower
 //e.g '1' -> 0, 'a' -> 9
+//TODO could update this to the safe/unsafe version
+//in general may be able to move many functions into a shared util file
 int toInt(char c) {
 
 	//TODO could be sped up slightly
@@ -174,7 +176,6 @@ int permutationToNumber(char* permString) {
 	return k;
 }
 
-
 void allocateMemory() {
 	
 	permutationCount = factorial(N);
@@ -268,7 +269,7 @@ int main(int argc, char** argv) {
 
 	file = fopen(argv[2], "r");
 	if (file == NULL) {
-		printf("could not open input file %s/n", argv[2]);
+		printf("could not open input file %s\n", argv[2]);
 		exit(1);
 	}
 
@@ -289,7 +290,6 @@ int main(int argc, char** argv) {
 	fread(data, sizeof(char), length, file);
 	fclose(file);
 
-	
 	checkNumber();
 
 	freeMemory();

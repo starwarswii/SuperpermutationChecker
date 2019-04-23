@@ -32,6 +32,7 @@ int N;
 
 char* data; //TODO rename?
 
+int localLength;
 char* rankData;
 
 //should contain all ones if has all permutations
@@ -39,9 +40,13 @@ char* rankData;
 char* checklist;
 int permutationCount;
 
-int baseCharsPerRank;
+char* fullChecklist;
+
+//"constants" all based on file length, number of ranks, and N
+//they are described and defined in allocateMemory()
+int baseChars;
 int overlap;
-int maxCharsPerRank;
+int maxLength;
 
 int factorial(int n) {
 	
@@ -54,21 +59,43 @@ int factorial(int n) {
 	return result;
 }
 
+//#define UNSAFE
+
 //converts a character to an int,
 //also mapping each one lower
 //e.g '1' -> 0, 'a' -> 9
 int toInt(char c) {
+	#ifndef UNSAFE
+		//safe version
+		
+		int i = -1;
+		
+		if (c >= '1' && c <= '9') {
+			i = c - '1';
+		}
 
-	//TODO could be sped up slightly
-	if (c >= '1' && c <= '9') {
-		return c - '1';
-	}
-
-	if (c >= 'a' && c <= 'f') {
-		return c - 'a' + 9;
-	}
+		if (c >= 'a' && c <= 'f') {
+			i = c - 'a' + 9;
+		}
+		
+		if (i == -1 || i >= N) {
+			printf("error: invalid character %c in file\n", c);
+			exit(1);
+		}
+		
+		return i;
 	
-	return -1;
+	#else
+		//unsafe version that appears to be slightly faster in testing. even with -O5
+		//"unsafe" really just means it assumes the input is well-formed
+			
+		if (c <= '9') {
+			return c - '1';
+		} else {
+			return c - 88; //-'a'+9 = -97+9 = -88 
+		}
+	
+	#endif
 }
 
 char charTable[15] = {
@@ -142,8 +169,6 @@ char* numberToPermutation(int k) {
 	return outString;
 }
 
-
-
 //returns the number corresponding to the given permutation
 int getNumber(int* perm) {
 	
@@ -196,68 +221,56 @@ void allocateMemory() {
 		data = malloc(length*sizeof(char));
 	}
 	
+	//base characters for each rank
+	baseChars = length/numRanks;
 	
-	baseCharsPerRank = (length+1)/numRanks;
+	//extra overlap characters per rank. as we only overlap on the
+	//ends of lines, we need to overlap up to the full n-1 amount
+	//i think n/2 overlap could be used if we did overlap on both sides,
+	//but this is simpler and should be equivalent.
+	overlap = N-1;
 	
-	//printf("rank %d: length=%d, numRanks=%d, basechars=%d\n", rank, length, numRanks, baseCharsPerRank);
+	//maximum length per rank, if it has all base chars and overlap chars
+	maxLength = baseChars+overlap;
 	
-	overlap = (N+1)/2;
-	maxCharsPerRank = baseCharsPerRank+overlap;
+	//start position for this rank in the global array
+	int start = rank*baseChars;
 	
-	//int mysize = maxCharsPerRank;
+	//maximum end position for this rank in the global array,
+	//if it has all the characters
+	int maxEnd = start + maxLength;
 	
-	//int proposedLength = rank*baseCharsPerRank;
+	//the true end position for this rank in the global array (exclusive)
+	//we cap it at the array length, so the
+	//length will be cut off if it would normally extend
+	//beyond the end of the array
+	//we also ensure that we get the remainder of the characters
+	//if we're the last rank
+	int end;
 	
-	//printf("rank %d: %d %d\n", rank, length - rank*baseCharsPerRank, baseCharsPerRank);
-	
-	int baseLength = min(length - rank*baseCharsPerRank, baseCharsPerRank);
-	
-	int overlapLength = min(length - (rank*baseCharsPerRank + baseLength-1), overlap);
-	
-	int fullLength = baseCharsPerRank+overlap;
-	//printf("rank %d: %d\n", rank, fullLength);
-	
-	int start = rank*baseCharsPerRank;
-	int end = start + fullLength;
-	
-	int cappedEnd = min(end, length);
-	
-	int localLength = cappedEnd - start;
-	
-	
-	MPI_Barrier(MPI_COMM_WORLD);
-	//printf("rank %d: start=%d, end=%d, capped=%d\n", rank, start, end, cappedEnd);
-	printf("rank %d: local=%d\n", rank, localLength);
-	
-	int g = start + (baseCharsPerRank+overlap);
-	
-	int thing;
-	if (g < length) {
-		//printf("ding\n");
-		thing = baseCharsPerRank+overlap;
+	if (rank == numRanks-1) {
+		end = length;
 	} else {
-		thing = length - start;
+		end = min(maxEnd, length);
 	}
 	
-	//printf("basechars=%d\n", baseCharsPerRank);
-	if (rank == 0) {
-		//printf("basechars=%d\n", baseCharsPerRank);
-		//printf("N=%d, numRanks=%d, length=%d\n", N, numRanks, length);
-	}
+	//the length of this rank's share of the data
+	localLength = end - start;
 	
-	MPI_Barrier(MPI_COMM_WORLD);
+	rankData = malloc(localLength*sizeof(char));
 	
-	//printf("rank %d:, thing=%d\n", rank, thing);
-	
-	//printf("rank %d:, baselength=%d, overlaplength=%d\n", rank, baseLength, overlapLength);
-	
-	free(data);
-	exit(1);
-	
-	//rankData = ;
+	//for debugging. TODO remove
+	//MPI_Barrier(MPI_COMM_WORLD);
+	//printf("rank %d: local=%d\n", rank, localLength);
 	
 	//fill with zeros
 	checklist = calloc(permutationCount, sizeof(char));
+	
+	if (rank == 0) {
+		//doesn't need to be filled with zeros,
+		//as it will be the result of a reduction
+		fullChecklist = malloc(permutationCount*sizeof(char));
+	}
 	
 	elems = malloc(N*sizeof(int));
 	permuted = malloc(N*sizeof(int));
@@ -265,7 +278,6 @@ void allocateMemory() {
 	
 	tempPerm = malloc(N*sizeof(int));
 	outString = malloc(N*sizeof(char));
-	
 }
 
 void freeMemory() {
@@ -276,6 +288,10 @@ void freeMemory() {
 	free(rankData);
 	
 	free(checklist);
+	
+	if (rank == 0) {
+		free(fullChecklist);
+	}
 	
 	free(elems);
 	free(permuted);
@@ -290,59 +306,97 @@ void checkNumber() {
 	
 	long long startTime = GetTimeBase();
 	
-	
 	MPI_Request receiveRequest;
 	
-	
-	//MPI_Irecv(topGhostRow, gridSize, MPI_CHAR, rankAbove, 1, MPI_COMM_WORLD, &receiveRequest);
-	
+	MPI_Irecv(rankData, localLength, MPI_CHAR, 0, 1, MPI_COMM_WORLD, &receiveRequest);
 	
 	if (rank == 0) {
 		
 		MPI_Request sendRequest;
 		
 		for (int i = 0; i < numRanks; i++) {
-			//MPI_Isend(grid[0], gridSize, MPI_CHAR, rankAbove, 1, MPI_COMM_WORLD, &sendRequest);
+			
+			//start position for the rank in the global array
+			int start = i*baseChars;
+		
+			//maximum end position for the rank in the global array,
+			//if it has all the characters
+			int maxEnd = start + maxLength;
+		
+			//the true end position for the rank in the global array (exclusive)
+			//we cap it at the array length, so the
+			//length will be cut off if it would normally extend
+			//beyond the end of the array
+			//we also ensure that we get the remainder of the characters
+			//if it's the last rank
+			int end;
+			
+			if (i == numRanks-1) {
+				end = length;
+			} else {
+				end = min(maxEnd, length);
+			}
+		
+			//the length of the rank's share of the data
+			//we cap the end point at the array length, so the
+			//length will be cut off if it would normally extend
+			//beyond the end of the array
+			int sendLength = end - start;
+			
+			MPI_Isend(data+start, sendLength, MPI_CHAR, i, 1, MPI_COMM_WORLD, &sendRequest);
 		}
 		
 	}
 	
+	MPI_Wait(&receiveRequest, MPI_STATUS_IGNORE);
 	
+	//MPI_Barrier(MPI_COMM_WORLD);
+	//printf("rank %d: %.*s\n", rank, localLength, rankData);
 	
-	//MPI_Wait(&receiveRequest, MPI_STATUS_IGNORE);
-	//MPI_Wait(&sendRequest, MPI_STATUS_IGNORE);
-	
-	
-	for (int i = 0; i < length-N+1; i++) {
-		int k = permutationToNumber(data+i);
+	for (int i = 0; i < localLength-N+1; i++) {
+		int k = permutationToNumber(rankData+i);
 		
+		//TODO see if we should do this second check
+		//might be making code slightly slower or faster
 		if (k != -1 && !checklist[k]) {
 			checklist[k] = 1;
 		}
 		
 	}
 	
-	int good = 1;
-	printf("checking number...\n");
-	for (int i = 0; i < permutationCount; i++) {
-		if (!checklist[i]) {
-			char* perm = numberToPermutation(i);
-			printf("missing permutation number %d: [%.*s]\n", i, N, perm);
-			good = 0;
+	//TODO could make checklist "bytes" instead. doesn't really matter
+	//would more be to note that it represents 0,1 vs an actual ascii character
+	
+	//do reduction across checklists using logical-or reduction
+	MPI_Reduce(checklist, fullChecklist, permutationCount, MPI_CHAR, MPI_LOR, 0, MPI_COMM_WORLD);
+	
+	//printf("rank %d: %d %d %d %d %d %d\n", rank, checklist[0], checklist[1], checklist[2], checklist[3], checklist[4], checklist[5]);
+	
+	if (rank == 0) {
+		
+		//printf("full: %d %d %d %d %d %d\n", fullChecklist[0], fullChecklist[1], fullChecklist[2], fullChecklist[3], fullChecklist[4], fullChecklist[5]);
+		
+		int good = 1;
+		printf("checking number...\n");
+		for (int i = 0; i < permutationCount; i++) {
+			if (!fullChecklist[i]) {
+				char* perm = numberToPermutation(i);
+				printf("missing permutation number %d: [%.*s]\n", i, N, perm);
+				good = 0;
+			}
 		}
+		
+		if (good) {
+			printf("number is good!\n");
+		} else {
+			printf("number is not good\n");
+		}
+		
+		long long endTime = GetTimeBase();
+		double totalTime = ((double)(endTime-startTime))/frequency;
+		printf("\ntime:\n");
+		printf("%f\n\n", totalTime);
 	}
-	
-	if (good) {
-		printf("number is good!\n");
-	} else {
-		printf("number is not good\n");
-	}
-	
-	long long endTime = GetTimeBase();
-	double totalTime = ((double)(endTime-startTime))/frequency;
-	printf("\ntime:\n");
-	printf("%f\n\n", totalTime);
-	
 }
 
 int main(int argc, char** argv) {
@@ -365,7 +419,7 @@ int main(int argc, char** argv) {
 		
 		file = fopen(argv[2], "r");
 		if (file == NULL) {
-			printf("could not open input file %s/n", argv[2]);
+			printf("could not open input file %s\n", argv[2]);
 			exit(1);
 		}
 		
@@ -383,6 +437,13 @@ int main(int argc, char** argv) {
 	
 	//send the length from rank 0 to all ranks
 	MPI_Bcast(&length, 1, MPI_INT, 0, MPI_COMM_WORLD);
+	
+	if (numRanks > length) {
+		if (rank == 0) {
+			printf("error: number of ranks must not be more than the length of the file (%d > %d)\n", numRanks, length);
+		}
+		exit(1);
+	}
 	
 	allocateMemory();
 
