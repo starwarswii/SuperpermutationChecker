@@ -259,10 +259,6 @@ void allocateMemory() {
 	
 	rankData = malloc(localLength*sizeof(char));
 	
-	//for debugging. TODO remove
-	//MPI_Barrier(MPI_COMM_WORLD);
-	//printf("rank %d: local=%d\n", rank, localLength);
-	
 	//fill with zeros
 	checklist = calloc(permutationCount, sizeof(char));
 	
@@ -350,9 +346,6 @@ void checkNumber() {
 	
 	MPI_Wait(&receiveRequest, MPI_STATUS_IGNORE);
 	
-	//MPI_Barrier(MPI_COMM_WORLD);
-	//printf("rank %d: %.*s\n", rank, localLength, rankData);
-	
 	for (int i = 0; i < localLength-N+1; i++) {
 		int k = permutationToNumber(rankData+i);
 		
@@ -370,11 +363,7 @@ void checkNumber() {
 	//do reduction across checklists using logical-or reduction
 	MPI_Reduce(checklist, fullChecklist, permutationCount, MPI_CHAR, MPI_LOR, 0, MPI_COMM_WORLD);
 	
-	//printf("rank %d: %d %d %d %d %d %d\n", rank, checklist[0], checklist[1], checklist[2], checklist[3], checklist[4], checklist[5]);
-	
 	if (rank == 0) {
-		
-		//printf("full: %d %d %d %d %d %d\n", fullChecklist[0], fullChecklist[1], fullChecklist[2], fullChecklist[3], fullChecklist[4], fullChecklist[5]);
 		
 		int good = 1;
 		printf("checking number...\n");
