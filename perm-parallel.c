@@ -383,7 +383,7 @@ void checkNumber() {
 		
 		long long endTime = GetTimeBase();
 		double totalTime = ((double)(endTime-startTime))/frequency;
-		printf("\ntime:\n");
+		printf("time:\n");
 		printf("%f\n\n", totalTime);
 	}
 }
@@ -419,6 +419,14 @@ int main(int argc, char** argv) {
 		
 		//then we go back to the start of the file
 		fseek(file, 0, SEEK_SET);
+		
+		printf("running with %d ranks\n", numRanks);
+		
+		#ifdef BGQ
+			printf("compiled for BG/Q\n");
+		#else
+			printf("not compiled for BG/Q\n");
+		#endif
 		
 		printf("N = %d\n", N);
 		printf("file size detected as %d\n", length);
