@@ -11,7 +11,7 @@ def run(string):
 		print("exiting")
 		sys.exit()
 		
-def runWithOutput(string):
+def runWithOutput(string, exitOnError=True):
 
 	#print(string)
 
@@ -21,8 +21,9 @@ def runWithOutput(string):
 		result = subprocess.check_output(commands, stderr=subprocess.STDOUT)
 
 	except:
-		print("non-zero exit code, exiting")
-		sys.exit()
+		if exitOnError:
+			print("non-zero exit code, exiting")
+			sys.exit()
 		
 	#print(result)
 	
@@ -62,15 +63,43 @@ def testParallel(num, filename, negativeTest, limit=15):
 			print "incorrect test found!"
 			print "using file", filename, "and numRanks", i
 			sys.exit()
+			
+def testHyperparallel(num, filename, negativeTest, rankLimit=15, threadLimit=10):
+	filesize = os.stat(filename).st_size
+	
+	for i in range(1, min(filesize, rankLimit)+1):
+		
+	
+		for j in range(1, min(filesize//i, threadLimit)+1):
+			result = runWithOutput("mpirun -n "+str(i)+" ./a.out "+str(num)+" "+filename+" "+str(j), False)
+			
+			if "error: threads per rank" in result:
+				print result
+				print "found highest thread count", j, "for", i, "ranks. skipping to next rank value\n"
+				continue
+			
+			#we need the parenthesies, otherwise it evaluates to [(negativeTest != "good") in result]
+			#which becomes [False in result]
+			correct = negativeTest != ("good!" in result)
+			
+			if correct:
+				print "file", filename, "with", i, "ranks and", j, "threads is correct"
+			else:
+				print result
+				print "incorrect test found!"
+				print "using file", filename, " numRanks", i, "numThreads", j
+				sys.exit()
 
 ######################################## BEGIN ########################################
 
-run("mpicc -Wall perm-parallel.c")
+
 	
 if len(sys.argv) == 1:
 	
+	run("mpicc -Wall perm-parallel.c")
+	
 	valids = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-	invalids = [4, 7, 8, 9, 10, 11]
+	invalids = [4, 5, 7, 8, 9, 10, 11]
 	
 	for num in valids:
 		filename = "tests/valid"+str(num)+".in"
@@ -93,8 +122,17 @@ if len(sys.argv) == 1:
 		filename = "tests/invalid"+str(num)+".in"
 		testSerial(num, filename, True)
 		print ""
+		
+	run("mpicc -Wall perm-hyperparallel.c -lpthread")
+		
+	num = 5
+	testHyperparallel(num, "tests/valid"+str(num)+".in", False, 10)
+	print ""
+	testHyperparallel(num, "tests/invalid"+str(num)+".in", True, 10)
 	
 else:
+
+	run("mpicc -Wall perm-parallel.c")
 
 	type = sys.argv[1]
 	num = sys.argv[2]

@@ -2,10 +2,10 @@
 #include <stdlib.h>
 
 #include <mpi.h>
-//#include <pthread.h>
+#include <pthread.h>
 
 //example compile and run:
-// mpicc -Wall perm-parallel.c && mpirun -n 2 ./a.out 9 tests/valid9.in
+// mpicc -Wall perm-hyperparallel.c -lpthread && mpirun -n 2 ./a.out 9 tests/valid9.in 2
 
 //when running on the BG/Q, either uncomment this or compile with -DBGQ
 //#define BGQ
@@ -18,7 +18,6 @@
 	#define frequency 1.0 //Wtime already returns seconds, so we divide by 1
 #endif
 
-
 int numRanks;
 int rank;
 
@@ -29,6 +28,9 @@ int length;
 
 //number of symbols
 int N;
+
+//total threads per rank
+int threadsPerRank;
 
 char* data; //TODO rename?
 
@@ -47,6 +49,16 @@ char* fullChecklist;
 int baseChars;
 int overlap;
 int maxLength;
+
+
+
+pthread_t* threads;
+int numPthreads;
+int* threadValues;
+
+//how many rows the local rank has
+//note grid is (rowCount x gridSize)
+int rowCount;
 
 int factorial(int n) {
 	
@@ -124,16 +136,16 @@ void loadIntoString(int* array, char* string) {
 }
 
 //used in both permutation functions
-int* elems;
+int** elemsList;
 
 //used in getPermutation()
 int* permuted;
 
 //used in getNumber()
-int* pos;
+int** posList;
 
 //used in permutationToNumber()
-int* tempPerm;
+int** tempPermList;
 
 //used in numberToPermutation()
 //TODO maybe only initalize some of this stuff when needed
@@ -145,6 +157,8 @@ char* outString;
 int* getPermutation(int k) {
 	int ind;
 	int m = k;
+	
+	int* elems = elemsList[0];
 	
 	for (int i = 0; i < N; i++) {
 		elems[i] = i;
@@ -170,7 +184,10 @@ char* numberToPermutation(int k) {
 }
 
 //returns the number corresponding to the given permutation
-int getNumber(int* perm) {
+int getNumber(int* perm, int id) {
+	
+	int* pos = posList[id];
+	int* elems = elemsList[id];
 	
 	int k = 0;
 	int m = 1;
@@ -195,9 +212,11 @@ int getNumber(int* perm) {
 }
 
 //returns the number corresponding to the given permutation string
-int permutationToNumber(char* permString) {
-	loadIntoInt(permString, tempPerm);
-	int k = getNumber(tempPerm);
+//id is used to select the right memory to ensure no conflicts
+//between ranks
+int permutationToNumber(char* permString, int id) {
+	loadIntoInt(permString, tempPermList[id]);
+	int k = getNumber(tempPermList[id], id);
 	
 	//getNumber can return invalid permutation numbers
 	//if the given string has duplicate numbers
@@ -215,11 +234,9 @@ int min(int a, int b) {
 
 void allocateMemory() {
 	
-	permutationCount = factorial(N);
+	numPthreads = threadsPerRank-1;
 	
-	if (rank == 0) {
-		data = malloc(length*sizeof(char));
-	}
+	permutationCount = factorial(N);
 	
 	//base characters for each rank
 	baseChars = length/numRanks;
@@ -257,6 +274,24 @@ void allocateMemory() {
 	//the length of this rank's share of the data
 	localLength = end - start;
 	
+	if (threadsPerRank > localLength) {
+		printf("error: threads per rank (%d) cannot be greater than local length (%d)\n", threadsPerRank, localLength);
+		exit(1);
+	}
+	
+	if (rank == 0) {
+		data = malloc(length*sizeof(char));
+	}
+	
+	threads = malloc(numPthreads*sizeof(pthread_t));
+	threadValues = malloc(threadsPerRank*sizeof(int)); //we want to include mpi thread
+	
+	//each thread will be givin an id to tell it which thread it is
+	//thread with id 0 will be the mpi thread
+	for (int i = 0; i < threadsPerRank; i++) {
+		threadValues[i] = i;
+	}
+	
 	rankData = malloc(localLength*sizeof(char));
 	
 	//fill with zeros
@@ -268,18 +303,27 @@ void allocateMemory() {
 		fullChecklist = malloc(permutationCount*sizeof(char));
 	}
 	
-	elems = malloc(N*sizeof(int));
 	permuted = malloc(N*sizeof(int));
-	pos = malloc(N*sizeof(int));
-	
-	tempPerm = malloc(N*sizeof(int));
 	outString = malloc(N*sizeof(char));
+	
+	posList = malloc(threadsPerRank*sizeof(int*));
+	elemsList = malloc(threadsPerRank*sizeof(int*));
+	tempPermList = malloc(threadsPerRank*sizeof(int*));
+	
+	for (int i = 0; i < threadsPerRank; i++) {
+		posList[i] = malloc(N*sizeof(int));
+		elemsList[i] = malloc(N*sizeof(int));
+		tempPermList[i] = malloc(N*sizeof(int));
+	}
 }
 
 void freeMemory() {
 	if (rank == 0) {
 		free(data);
 	}
+	
+	free(threads);
+	free(threadValues);
 	
 	free(rankData);
 	
@@ -289,13 +333,88 @@ void freeMemory() {
 		free(fullChecklist);
 	}
 	
-	free(elems);
 	free(permuted);
-	free(pos);
-	
-	free(tempPerm);
 	free(outString);
+	
+	for (int i = 0; i < threadsPerRank; i++) {
+		free(posList[i]);
+		free(elemsList[i]);
+		free(tempPermList[i]);
+	}
+	
+	free(posList);
+	free(elemsList);
+	free(tempPermList);
 }
+
+void* thing(void* arg) {
+	
+	
+	//unpack the argument into the id
+	int id = *((int*)arg);
+	
+	//int isMpi = id == 0;
+	
+	//each block is an N char substring
+	int numBlocks = localLength-N+1;
+	
+	int blocksPerThread = numBlocks/threadsPerRank;
+	
+	//rank-local start and end row indecies for each thread
+	int start = id*blocksPerThread;
+	
+	int end;
+	if (id == threadsPerRank-1) {
+		end = numBlocks;
+	} else {
+		end = min(start+blocksPerThread, numBlocks);
+	}
+	
+	printf("rank %d thread %d: working on %d to %d\n", rank, id, start, end);
+	
+	
+	for (int i = start; i < end; i++) {
+		int k = permutationToNumber(rankData+i, id);
+		
+		if (k != -1) {
+			checklist[k] = 1;
+		}
+	}
+	
+	return 0;
+}
+
+/*
+
+
+//set up the pthread barrier for use in sycronising the pthreads to
+	//have them wait for the mpi tasks to finish
+	pthread_barrier_init(&barrier, NULL, totalThreads);
+	
+	long long startTime = GetTimeBase();
+	
+	//spawn threads
+	for (int i = 0; i < numPthreads; i++) {
+		//each pthread gets a number 1 or greater
+		pthread_create(&threads[i], NULL, simulate, &threadValues[i+1]); 
+	}
+	
+	//run the same function for the mpi rank
+	//we give it id 0 to distringuish it from the pthreads
+	simulate(&threadValues[0]);
+	
+	//at this point most threads should be terminated, but
+	//we'll wait for them just to make sure
+	for (int i = 0; i < numPthreads; i++) {
+		pthread_join(threads[i], NULL); 
+	}
+
+
+
+
+*/
+
+
 
 //the main code
 void checkNumber() {
@@ -346,7 +465,26 @@ void checkNumber() {
 	
 	MPI_Wait(&receiveRequest, MPI_STATUS_IGNORE);
 	
-	for (int i = 0; i < localLength-N+1; i++) {
+	//spawn threads
+	for (int i = 0; i < numPthreads; i++) {
+		//each pthread gets a number 1 or greater
+		pthread_create(&threads[i], NULL, thing, &threadValues[i+1]); 
+	}
+	
+	//run the same function for the mpi rank
+	//we give it id 0 to distringuish it from the pthreads
+	thing(&threadValues[0]);
+	
+	
+	//at this point most threads should be terminated, but
+	//we'll wait for them just to make sure
+	for (int i = 0; i < numPthreads; i++) {
+		pthread_join(threads[i], NULL); 
+	}
+	
+	
+	
+/* 	for (int i = 0; i < localLength-N+1; i++) {
 		int k = permutationToNumber(rankData+i);
 		
 		//TODO see if we should do this second check
@@ -355,7 +493,7 @@ void checkNumber() {
 			checklist[k] = 1;
 		}
 		
-	}
+	} */
 	
 	//TODO could make checklist "bytes" instead. doesn't really matter
 	//would more be to note that it represents 0,1 vs an actual ascii character
@@ -395,14 +533,16 @@ int main(int argc, char** argv) {
 	MPI_Comm_size(MPI_COMM_WORLD, &numRanks);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 	
-	if (argc < 3) {
+	if (argc < 4) {
 		if (rank == 0) {
-			printf("usage: %s N inputFile\n", argv[0]);
+			printf("usage: %s N inputFile threadsPerRank\n", argv[0]);
 		}
 		exit(1);
 	}
 
 	N = atoi(argv[1]);
+	
+	threadsPerRank = atoi(argv[3]);
 
 	if (rank == 0) {
 		
