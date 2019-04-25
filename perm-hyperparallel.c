@@ -519,6 +519,7 @@ int main(int argc, char** argv) {
 		fseek(file, 0, SEEK_SET);
 		
 		printf("running with %d ranks\n", numRanks);
+		printf("%d threads per rank\n", threadsPerRank);
 		
 		#ifdef BGQ
 			printf("compiled for BG/Q\n");
