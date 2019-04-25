@@ -92,8 +92,6 @@ def testHyperparallel(num, filename, negativeTest, rankLimit=15, threadLimit=10)
 
 ######################################## BEGIN ########################################
 
-
-	
 if len(sys.argv) == 1:
 	
 	run("mpicc -Wall perm-parallel.c")

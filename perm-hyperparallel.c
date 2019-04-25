@@ -347,13 +347,14 @@ void freeMemory() {
 	free(tempPermList);
 }
 
-void* thing(void* arg) {
-	
+//checks part of the local rankData
+//this function is run both by spawned pthreads and the main mpi threads
+//the mpi threads do not perform any special behavior
+//argument is a thread id indicating which thread you are
+void* checkSection(void* arg) {
 	
 	//unpack the argument into the id
 	int id = *((int*)arg);
-	
-	//int isMpi = id == 0;
 	
 	//each block is an N char substring
 	int numBlocks = localLength-N+1;
@@ -363,6 +364,7 @@ void* thing(void* arg) {
 	//rank-local start and end row indecies for each thread
 	int start = id*blocksPerThread;
 	
+	//we ensure we pick up the end part if we're the last thread
 	int end;
 	if (id == threadsPerRank-1) {
 		end = numBlocks;
@@ -370,12 +372,13 @@ void* thing(void* arg) {
 		end = min(start+blocksPerThread, numBlocks);
 	}
 	
-	printf("rank %d thread %d: working on %d to %d\n", rank, id, start, end);
-	
-	
 	for (int i = start; i < end; i++) {
+		//we pass in the id to indicate which thread we are
+		//so we use our personal copies of scratch memory in this operation
 		int k = permutationToNumber(rankData+i, id);
 		
+		//note we don't need a mutex here as all ranks will only
+		//be unconditionally writing ones, so there can be no conflict
 		if (k != -1) {
 			checklist[k] = 1;
 		}
@@ -383,38 +386,6 @@ void* thing(void* arg) {
 	
 	return 0;
 }
-
-/*
-
-
-//set up the pthread barrier for use in sycronising the pthreads to
-	//have them wait for the mpi tasks to finish
-	pthread_barrier_init(&barrier, NULL, totalThreads);
-	
-	long long startTime = GetTimeBase();
-	
-	//spawn threads
-	for (int i = 0; i < numPthreads; i++) {
-		//each pthread gets a number 1 or greater
-		pthread_create(&threads[i], NULL, simulate, &threadValues[i+1]); 
-	}
-	
-	//run the same function for the mpi rank
-	//we give it id 0 to distringuish it from the pthreads
-	simulate(&threadValues[0]);
-	
-	//at this point most threads should be terminated, but
-	//we'll wait for them just to make sure
-	for (int i = 0; i < numPthreads; i++) {
-		pthread_join(threads[i], NULL); 
-	}
-
-
-
-
-*/
-
-
 
 //the main code
 void checkNumber() {
@@ -468,32 +439,19 @@ void checkNumber() {
 	//spawn threads
 	for (int i = 0; i < numPthreads; i++) {
 		//each pthread gets a number 1 or greater
-		pthread_create(&threads[i], NULL, thing, &threadValues[i+1]); 
+		pthread_create(&threads[i], NULL, checkSection, &threadValues[i+1]); 
 	}
 	
 	//run the same function for the mpi rank
 	//we give it id 0 to distringuish it from the pthreads
-	thing(&threadValues[0]);
-	
+	//although they don't do anything special
+	checkSection(&threadValues[0]);
 	
 	//at this point most threads should be terminated, but
 	//we'll wait for them just to make sure
 	for (int i = 0; i < numPthreads; i++) {
 		pthread_join(threads[i], NULL); 
 	}
-	
-	
-	
-/* 	for (int i = 0; i < localLength-N+1; i++) {
-		int k = permutationToNumber(rankData+i);
-		
-		//TODO see if we should do this second check
-		//might be making code slightly slower or faster
-		if (k != -1 && !checklist[k]) {
-			checklist[k] = 1;
-		}
-		
-	} */
 	
 	//TODO could make checklist "bytes" instead. doesn't really matter
 	//would more be to note that it represents 0,1 vs an actual ascii character
