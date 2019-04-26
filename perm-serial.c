@@ -25,7 +25,7 @@ int length;
 //number of symbols
 int N;
 
-char* data; //TODO rename?
+char* data;
 
 //should contain all ones if has all permutations
 //is char as will only hold 0 or 1. could probably be unsigned : byte
@@ -46,11 +46,8 @@ int factorial(int n) {
 //converts a character to an int,
 //also mapping each one lower
 //e.g '1' -> 0, 'a' -> 9
-//TODO could update this to the safe/unsafe version
-//in general may be able to move many functions into a shared util file
 int toInt(char c) {
 
-	//TODO could be sped up slightly
 	if (c >= '1' && c <= '9') {
 		return c - '1';
 	}
@@ -100,8 +97,6 @@ int* pos;
 int* tempPerm;
 
 //used in numberToPermutation()
-//TODO maybe only initalize some of this stuff when needed
-//as it will only be used in an error case
 char* outString;
 
 //returns the permutation corresponding
@@ -211,7 +206,7 @@ void checkNumber() {
 	for (int i = 0; i < length-N+1; i++) {
 		int k = permutationToNumber(data+i);
 		
-		if (k != -1 && !checklist[k]) {
+		if (k != -1) {
 			checklist[k] = 1;
 		}
 		

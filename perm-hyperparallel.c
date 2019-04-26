@@ -32,7 +32,7 @@ int N;
 //total threads per rank
 int threadsPerRank;
 
-char* data; //TODO rename?
+char* data;
 
 int localLength;
 char* rankData;
@@ -148,8 +148,6 @@ int** posList;
 int** tempPermList;
 
 //used in numberToPermutation()
-//TODO maybe only initalize some of this stuff when needed
-//as it will only be used in an error case
 char* outString;
 
 //returns the permutation corresponding
@@ -452,9 +450,6 @@ void checkNumber() {
 	for (int i = 0; i < numPthreads; i++) {
 		pthread_join(threads[i], NULL); 
 	}
-	
-	//TODO could make checklist "bytes" instead. doesn't really matter
-	//would more be to note that it represents 0,1 vs an actual ascii character
 	
 	//do reduction across checklists using logical-or reduction
 	MPI_Reduce(checklist, fullChecklist, permutationCount, MPI_CHAR, MPI_LOR, 0, MPI_COMM_WORLD);
