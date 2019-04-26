@@ -4,7 +4,11 @@ This program is to check superpermutations for validity in a parallel way. Gener
 
 Usage:
 
+To generate superpermutations (please modify the N in the py file):
+    python generate.py
+    
 To compile:
     mpicc perm.c -o perm.out
+    
 To run the program:
     mpirun -np [number of ranks] ./perm.out [number of symbols] [test file]
