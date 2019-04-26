@@ -45,6 +45,12 @@ long long tempEndTimeComputation;
 int localLength;
 char* rankData;
 
+//array storing all the reduce times
+double* reduceTimes;
+
+//array storing all the computation times
+double* computationTimes;
+
 //should contain all ones if has all permutations
 //is char as will only hold 0 or 1. could probably be unsigned : byte
 char* checklist;
@@ -229,6 +235,8 @@ void allocateMemory() {
 	
 	if (rank == 0) {
 		data = malloc(length*sizeof(char));
+		reduceTimes = malloc(numRanks * sizeof(double));
+		computationTimes = malloc(numRanks * sizeof(double));
 	}
 	
 	//base characters for each rank
@@ -289,6 +297,8 @@ void allocateMemory() {
 void freeMemory() {
 	if (rank == 0) {
 		free(data);
+		free(reduceTimes);
+		free(computationTimes);
 	}
 	
 	free(rankData);
@@ -354,21 +364,26 @@ void checkNumber() {
 		}
 		
 	}
-	
-	MPI_Wait(&receiveRequest, MPI_STATUS_IGNORE);
 
-    //add to overhead time, we also start a computation timer for rank 0
+	//printf("duck %i\n", rank);	
+	MPI_Wait(&receiveRequest, MPI_STATUS_IGNORE);
+	//printf("duck2 %i\n", rank);
+	
+    //add to overhead time
 	if(rank == 0)
     {
         tempEndTimeOverhead = GetTimeBase();
+		double t = (((double)(tempEndTimeOverhead-tempStartTimeOverhead))/frequency);
+		printf("Time for sending %f\n", t);
         totalTimeOverhead = totalTimeOverhead + (((double)(tempEndTimeOverhead-tempStartTimeOverhead))/frequency);
-        tempStartTimeComputation = GetTimeBase();
     }
+    
+    tempStartTimeComputation = GetTimeBase();
 
-
+	
 	for (int i = 0; i < localLength-N+1; i++) {
 		int k = permutationToNumber(rankData+i);
-		
+		//printf("%i", k);	
 		//TODO see if we should do this second check
 		//might be making code slightly slower or faster
 		if (k != -1 && !checklist[k]) {
@@ -383,23 +398,55 @@ void checkNumber() {
 	//do reduction across checklists using logical-or reduction
 
     //This also ends the computation timer for rank 0
-    if (rank == 0) 
-    {   
-        tempEndTimeComputation = GetTimeBase();
-        totalTimeComputation = totalTimeComputation + (((double)(tempEndTimeComputation-tempStartTimeComputation))/frequency);
-        tempStartTimeOverhead = GetTimeBase();
-    }
+     	
+    tempEndTimeComputation = GetTimeBase();
+    double temp_comp = (((double)(tempEndTimeComputation-tempStartTimeComputation))/frequency);
+    totalTimeComputation = totalTimeComputation + temp_comp;
+    tempStartTimeOverhead = GetTimeBase();
+    
 
 	MPI_Reduce(checklist, fullChecklist, permutationCount, MPI_CHAR, MPI_LOR, 0, MPI_COMM_WORLD);
+    tempEndTimeOverhead = GetTimeBase();
+	double t2 = (((double)(tempEndTimeOverhead-tempStartTimeOverhead))/frequency);
+
+	MPI_Gather(&t2, 1, MPI_DOUBLE, reduceTimes, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+	MPI_Gather(&temp_comp, 1, MPI_DOUBLE, computationTimes, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 	
 	if (rank == 0) {
 		
+		int rank_i = 0;
+		double longestTimeOverhead = -1;
+		int longestRankOverhead = -1;
+		double longestTimeComputation = -1;
+		int longestRankComputation = -1;
+
+		for(rank_i = 0; rank_i < numRanks; rank_i++)
+		{
+			if(reduceTimes[rank_i] > longestTimeOverhead)
+			{
+				longestRankOverhead = rank_i;
+				longestTimeOverhead = reduceTimes[rank_i];
+			}
+
+			if(computationTimes[rank_i] > longestTimeComputation)
+			{
+				longestRankComputation = rank_i;
+				longestTimeComputation = computationTimes[rank_i];
+			}
+
+			//printf("%f\n", reduceTimes[rank_i]);
+			//printf("%f\n", computationTimes[rank_i]);
+		}
+
         //add to overhead time
-        tempEndTimeOverhead = GetTimeBase();
-        totalTimeOverhead = totalTimeOverhead + (((double)(tempEndTimeOverhead-tempStartTimeOverhead))/frequency);
+		printf("Longest ReduceTime %f, Rank: %i\n", longestTimeOverhead, longestRankOverhead);
+        totalTimeOverhead = totalTimeOverhead + longestTimeOverhead;
 
 		int good = 1;
 		printf("checking number...\n");
+		
+		tempStartTimeComputation = GetTimeBase();
+
 		for (int i = 0; i < permutationCount; i++) {
 			if (!fullChecklist[i]) {
 				char* perm = numberToPermutation(i);
@@ -414,12 +461,14 @@ void checkNumber() {
 			printf("number is not good\n");
 		}
 		
+        tempEndTimeComputation = GetTimeBase();
+        totalTimeComputation = longestTimeComputation + (((double)(tempEndTimeComputation-tempStartTimeComputation))/frequency);
 		long long endTime = GetTimeBase();
 		double totalTime = ((double)(endTime-startTime))/frequency;
 		printf("\ntime:\n");
 		printf("%f\n\n", totalTime);
         printf("Overhead Time: %f\n", totalTimeOverhead);
-        printf("Computation Time: %f\n", totalTimeComputation);
+        printf("Computation Time and Rank: %f %i\n", totalTimeComputation, longestRankComputation);
 	}
 }
 
@@ -450,6 +499,7 @@ int main(int argc, char** argv) {
 		//we get the length of the file by seeking to the end and
 		//then checking where we are
 		fseek(file, 0, SEEK_END);
+		//long long l2 = ftell(file);
 		length = ftell(file);
 		
 		//then we go back to the start of the file
@@ -472,7 +522,9 @@ int main(int argc, char** argv) {
     if(rank == 0)
     {
         tempEndTimeOverhead = GetTimeBase();
-        totalTimeOverhead = totalTimeOverhead + (((double)(tempEndTimeOverhead-tempStartTimeOverhead))/frequency);
+		double t3 = (((double)(tempEndTimeOverhead-tempStartTimeOverhead))/frequency);
+		printf("Boardcast Time: %f\n", t3);
+        totalTimeOverhead = totalTimeOverhead + t3;
     }
 	
 	if (numRanks > length) {
