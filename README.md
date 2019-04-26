@@ -16,8 +16,9 @@ The programs are run with `./a.out N inputFile [threadsPerRank]`
 
 where `N` is the size of the input alphebet, and `inputFile` is the filename with the string to check.
 
-The filename should only contain the ascii characters '1', '2', ..., to `N`, using 'a', 'b', etc if `N` is larger than 9
-the file should also not have a trailing newline. That is to say, the size of the file in bytes should be identical to the number of characters in the string.
+The file should only contain the ascii characters '1', '2', ..., to `N`, using 'a', 'b', etc. if `N` is larger than 9.
+
+The file should also not have a trailing newline. That is to say, the size of the file in bytes should be identical to the number of characters in the string.
 
 `threadsPerRank` is only used in `perm-hyperparallel.c`, and specifies how many threads to spawn in each rank.
 Specifiying, e.g. 4, will spawn 3 pthreads in each rank to help the mpi rank do the computation
