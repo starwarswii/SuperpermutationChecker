@@ -2,7 +2,6 @@
 #include <stdlib.h>
 
 #include <mpi.h>
-//#include <pthread.h>
 
 //example compile and run:
 // mpicc -Wall perm-parallel.c && mpirun -n 2 ./a.out 9 tests/valid9.in
@@ -17,7 +16,6 @@
 	#define GetTimeBase MPI_Wtime
 	#define frequency 1.0 //Wtime already returns seconds, so we divide by 1
 #endif
-
 
 int numRanks;
 int rank;
@@ -47,6 +45,26 @@ char* fullChecklist;
 int baseChars;
 int overlap;
 int maxLength;
+
+//total time for overhead
+double totalTimeOverhead;
+long long tempStartTimeOverhead;
+long long tempEndTimeOverhead;
+
+//total time for computation
+double totalTimeComputation;
+long long tempStartTimeComputation;
+long long tempEndTimeComputation;
+
+//array storing all the reduce times
+double* reduceTimes;
+
+//array storing all the computation times
+double* computationTimes;
+
+double makeTime(long long start, long long end) {
+	return ((double)(end-start))/frequency;
+}
 
 int factorial(int n) {
 	
@@ -274,6 +292,11 @@ void allocateMemory() {
 	
 	tempPerm = malloc(N*sizeof(int));
 	outString = malloc(N*sizeof(char));
+	
+	if (rank == 0) {	
+		reduceTimes = malloc(numRanks*sizeof(double));
+		computationTimes = malloc(numRanks*sizeof(double));
+	}
 }
 
 void freeMemory() {
@@ -295,6 +318,11 @@ void freeMemory() {
 	
 	free(tempPerm);
 	free(outString);
+	
+	if (rank == 0) {
+		free(reduceTimes);
+		free(computationTimes);
+	}
 }
 
 //the main code
@@ -307,6 +335,8 @@ void checkNumber() {
 	MPI_Irecv(rankData, localLength, MPI_CHAR, 0, 1, MPI_COMM_WORLD, &receiveRequest);
 	
 	if (rank == 0) {
+		
+		tempStartTimeOverhead = GetTimeBase();
 		
 		MPI_Request sendRequest;
 		
@@ -346,6 +376,16 @@ void checkNumber() {
 	
 	MPI_Wait(&receiveRequest, MPI_STATUS_IGNORE);
 	
+	//add to overhead time
+	if (rank == 0) {
+		tempEndTimeOverhead = GetTimeBase();
+		double currentOverhead = makeTime(tempStartTimeOverhead, tempEndTimeOverhead);
+		printf("isend/irecv time:\n%f\n\n", currentOverhead);
+		totalTimeOverhead += currentOverhead;
+	}
+
+	tempStartTimeComputation = GetTimeBase();
+	
 	for (int i = 0; i < localLength-N+1; i++) {
 		int k = permutationToNumber(rankData+i);
 		
@@ -360,10 +400,48 @@ void checkNumber() {
 	//TODO could make checklist "bytes" instead. doesn't really matter
 	//would more be to note that it represents 0,1 vs an actual ascii character
 	
+	//ends the computation timer for rank 0
+	tempEndTimeComputation = GetTimeBase();
+	double tempComp = makeTime(tempStartTimeComputation, tempEndTimeComputation);
+	
+	tempStartTimeOverhead = GetTimeBase();
+	
 	//do reduction across checklists using logical-or reduction
 	MPI_Reduce(checklist, fullChecklist, permutationCount, MPI_CHAR, MPI_LOR, 0, MPI_COMM_WORLD);
 	
+	tempEndTimeOverhead = GetTimeBase();
+	double tempOver = makeTime(tempStartTimeOverhead, tempEndTimeOverhead);
+
+	MPI_Gather(&tempOver, 1, MPI_DOUBLE, reduceTimes, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+	MPI_Gather(&tempComp, 1, MPI_DOUBLE, computationTimes, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+	
 	if (rank == 0) {
+		
+		double longestTimeOverhead = reduceTimes[0];
+		int longestRankOverhead = 0;
+		
+		double longestTimeComputation = computationTimes[0];
+		int longestRankComputation = 0;
+
+		for (int i = 1; i < numRanks; i++) {
+			
+			if (reduceTimes[i] > longestTimeOverhead) {
+				longestRankOverhead = i;
+				longestTimeOverhead = reduceTimes[i];
+			}
+
+			if (computationTimes[i] > longestTimeComputation) {
+				longestRankComputation = i;
+				longestTimeComputation = computationTimes[i];
+			}
+		}
+
+		printf("max reduce time (from rank %d):\n%f\n\n", longestRankOverhead, longestTimeOverhead);
+		
+		//add to overhead time
+		totalTimeOverhead += longestTimeOverhead;
+		
+		tempStartTimeComputation = GetTimeBase();
 		
 		int good = 1;
 		printf("checking number...\n");
@@ -376,15 +454,22 @@ void checkNumber() {
 		}
 		
 		if (good) {
-			printf("number is good!\n");
+			printf("number is good!\n\n");
 		} else {
-			printf("number is not good\n");
+			printf("number is not good\n\n");
 		}
 		
+		tempEndTimeComputation = GetTimeBase();
+		int checkingTime = makeTime(tempStartTimeComputation, tempEndTimeComputation);
+		totalTimeComputation = longestTimeComputation + checkingTime;
+		
 		long long endTime = GetTimeBase();
-		double totalTime = ((double)(endTime-startTime))/frequency;
-		printf("time:\n");
-		printf("%f\n\n", totalTime);
+		double totalTime = makeTime(startTime, endTime);
+		
+		printf("total overhead time: \n%f\n\n", totalTimeOverhead);
+		printf("max computation time (from rank %d):\n%f\n\n", longestRankComputation, totalTimeComputation);
+		
+		printf("total time:\n%f\n\n", totalTime);
 	}
 }
 
@@ -429,7 +514,13 @@ int main(int argc, char** argv) {
 		#endif
 		
 		printf("N = %d\n", N);
-		printf("file size detected as %d\n", length);
+		printf("file size detected as %d\n\n", length);
+		
+		totalTimeOverhead = 0;
+		totalTimeComputation = 0;
+
+		//start timing to capture the broadcast below
+		tempStartTimeOverhead = GetTimeBase();
 	}
 	
 	//send the length from rank 0 to all ranks
@@ -440,6 +531,14 @@ int main(int argc, char** argv) {
 			printf("error: number of ranks must not be more than the length of the file (%d > %d)\n", numRanks, length);
 		}
 		exit(1);
+	}
+	
+	//add time to overhead
+	if (rank == 0) {
+		tempEndTimeOverhead = GetTimeBase();
+		double time = makeTime(tempStartTimeOverhead, tempEndTimeOverhead);
+		printf("broadcast time: \n%f\n\n", time);
+		totalTimeOverhead += time;
 	}
 	
 	allocateMemory();
