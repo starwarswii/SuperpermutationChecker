@@ -8,7 +8,7 @@
 // mpicc -Wall perm-serial.c && ./a.out 9 tests/valid9.in
 
 //when running on the BG/Q, either uncomment this or compile with -DBGQ
-//#define BGQ
+#define BGQ
 
 #ifdef BGQ
 	#include <hwi/include/bqc/A2_inlines.h> //for GetTimeBase() on BG/Q
@@ -27,6 +27,11 @@ int length;
 int N;
 
 char* data; //TODO rename?
+
+//total time for computation
+double totalTimeComputation = 0;
+long long tempStartTimeComputation;
+long long tempEndTimeComputation;
 
 //should contain all ones if has all permutations
 //is char as will only hold 0 or 1. could probably be unsigned : byte
@@ -47,8 +52,6 @@ int factorial(int n) {
 //converts a character to an int,
 //also mapping each one lower
 //e.g '1' -> 0, 'a' -> 9
-//TODO could update this to the safe/unsafe version
-//in general may be able to move many functions into a shared util file
 int toInt(char c) {
 
 	//TODO could be sped up slightly
@@ -176,6 +179,7 @@ int permutationToNumber(char* permString) {
 	return k;
 }
 
+
 void allocateMemory() {
 	
 	permutationCount = factorial(N);
@@ -210,6 +214,7 @@ void freeMemory() {
 void checkNumber() {
 	
 	long long startTime = GetTimeBase();
+	tempStartTimeComputation = GetTimeBase();
 	
 	for (int i = 0; i < length-N+1; i++) {
 		int k = permutationToNumber(data+i);
@@ -219,6 +224,9 @@ void checkNumber() {
 		}
 		
 	}
+
+	tempEndTimeComputation = GetTimeBase();
+    totalTimeComputation = totalTimeComputation + (((double)(tempEndTimeComputation-tempStartTimeComputation))/frequency);
 	
 	int good = 1;
 	printf("checking number...\n");
@@ -238,8 +246,9 @@ void checkNumber() {
 	
 	long long endTime = GetTimeBase();
 	double totalTime = ((double)(endTime-startTime))/frequency;
-	printf("time:\n");
+	printf("\ntime:\n");
 	printf("%f\n\n", totalTime);
+	printf("Computation Time: %f\n", totalTimeComputation);
 	
 }
 
@@ -269,7 +278,7 @@ int main(int argc, char** argv) {
 
 	file = fopen(argv[2], "r");
 	if (file == NULL) {
-		printf("could not open input file %s\n", argv[2]);
+		printf("could not open input file %s/n", argv[2]);
 		exit(1);
 	}
 
@@ -281,14 +290,6 @@ int main(int argc, char** argv) {
 	//then we go back to the start of the file
 	fseek(file, 0, SEEK_SET);
 	
-	printf("running serial version\n");
-	
-	#ifdef BGQ
-		printf("compiled for BG/Q\n");
-	#else
-		printf("not compiled for BG/Q\n");
-	#endif
-	
 	printf("N = %d\n", N);
 	printf("file size detected as %d\n", length);
 
@@ -298,6 +299,7 @@ int main(int argc, char** argv) {
 	fread(data, sizeof(char), length, file);
 	fclose(file);
 
+	
 	checkNumber();
 
 	freeMemory();
