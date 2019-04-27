@@ -1,5 +1,4 @@
 *.out
-
-notes.txt
 jobs/
 tests/valid11_long.in
+docs/
