@@ -32,8 +32,10 @@ int N;
 //total threads per rank
 int threadsPerRank;
 
+//holds all the data. only used by rank 0
 char* data;
 
+//these keep track of the rank's data
 int localLength;
 char* rankData;
 
@@ -42,6 +44,7 @@ char* rankData;
 char* checklist;
 int permutationCount;
 
+//the result of a reduce to rank 0
 char* fullChecklist;
 
 //"constants" all based on file length, number of ranks, and N
@@ -50,16 +53,13 @@ int baseChars;
 int overlap;
 int maxLength;
 
-
-
+//keep track of the threads
 pthread_t* threads;
 int numPthreads;
 int* threadValues;
 
-//how many rows the local rank has
-//note grid is (rowCount x gridSize)
-int rowCount;
-
+//returns n!
+//used for setting permutationCount
 int factorial(int n) {
 	
 	int result = 1;
@@ -152,6 +152,8 @@ char* outString;
 
 //returns the permutation corresponding
 //to the given number k
+//uses Antoine Comeau's version of
+//Keith Schwarz's Factoradic Permutation Algorithm
 int* getPermutation(int k) {
 	int ind;
 	int m = k;
@@ -173,6 +175,8 @@ int* getPermutation(int k) {
 	return permuted;
 }
 
+//given a number, returns a permutation as
+//a non-null terminated string of length N
 char* numberToPermutation(int k) {
 	int* p = getPermutation(k);
 	
@@ -182,6 +186,9 @@ char* numberToPermutation(int k) {
 }
 
 //returns the number corresponding to the given permutation
+//uses Antoine Comeau's version of
+//Keith Schwarz's Factoradic Permutation Algorithm
+//id specifies which temporaries to use
 int getNumber(int* perm, int id) {
 	
 	int* pos = posList[id];
@@ -226,10 +233,12 @@ int permutationToNumber(char* permString, int id) {
 	return k;
 }
 
+//returns the min of ints a and b
 int min(int a, int b) {
 	return a < b ? a : b;
 }
 
+//allocates all dynamically needed memory
 void allocateMemory() {
 	
 	numPthreads = threadsPerRank-1;
@@ -308,6 +317,7 @@ void allocateMemory() {
 	elemsList = malloc(threadsPerRank*sizeof(int*));
 	tempPermList = malloc(threadsPerRank*sizeof(int*));
 	
+	//we have multiple of these, one for each thread, to avoid conflict
 	for (int i = 0; i < threadsPerRank; i++) {
 		posList[i] = malloc(N*sizeof(int));
 		elemsList[i] = malloc(N*sizeof(int));
@@ -315,7 +325,9 @@ void allocateMemory() {
 	}
 }
 
+//frees all dynamically allocated memory
 void freeMemory() {
+	
 	if (rank == 0) {
 		free(data);
 	}
@@ -385,7 +397,9 @@ void* checkSection(void* arg) {
 	return 0;
 }
 
-//the main code
+//the main body of the code. does the checking if
+//the given permutation is valid or not
+//also launches the threads which all call checkSection
 void checkNumber() {
 	
 	long long startTime = GetTimeBase();
@@ -456,6 +470,7 @@ void checkNumber() {
 	
 	if (rank == 0) {
 		
+		//same as standard parallel
 		int good = 1;
 		printf("checking number...\n");
 		for (int i = 0; i < permutationCount; i++) {
@@ -480,7 +495,6 @@ void checkNumber() {
 }
 
 int main(int argc, char** argv) {
-	
 	MPI_Init(&argc, &argv);
 	
 	MPI_Comm_size(MPI_COMM_WORLD, &numRanks);

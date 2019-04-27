@@ -28,8 +28,10 @@ int length;
 //number of symbols
 int N;
 
+//holds all the data. only used by rank 0
 char* data;
 
+//these keep track of the rank's data
 int localLength;
 char* rankData;
 
@@ -38,6 +40,7 @@ char* rankData;
 char* checklist;
 int permutationCount;
 
+//the result of a reduce to rank 0
 char* fullChecklist;
 
 //"constants" all based on file length, number of ranks, and N
@@ -62,19 +65,26 @@ double* reduceTimes;
 //array storing all the computation times
 double* computationTimes;
 
+//converts the start and end number of ticks into
+//time in seconds
 double makeTime(long long start, long long end) {
 	return ((double)(end-start))/frequency;
 }
 
+//starts a timer by recording the time
 void startTimer() {
 	tempStart = GetTimeBase();
 }
 
+//stops the timer by recording the time,
+//then returns the difference in seconds
 double stopGetTimer() {
 	tempEnd = GetTimeBase();
 	return makeTime(tempStart, tempEnd);
 }
 
+//returns n!
+//used for setting permutationCount
 int factorial(int n) {
 	
 	int result = 1;
@@ -167,6 +177,8 @@ char* outString;
 
 //returns the permutation corresponding
 //to the given number k
+//uses Antoine Comeau's version of
+//Keith Schwarz's Factoradic Permutation Algorithm
 int* getPermutation(int k) {
 	int ind;
 	int m = k;
@@ -186,6 +198,8 @@ int* getPermutation(int k) {
 	return permuted;
 }
 
+//given a number, returns a permutation as
+//a non-null terminated string of length N
 char* numberToPermutation(int k) {
 	int* p = getPermutation(k);
 	
@@ -195,6 +209,8 @@ char* numberToPermutation(int k) {
 }
 
 //returns the number corresponding to the given permutation
+//uses Antoine Comeau's version of
+//Keith Schwarz's Factoradic Permutation Algorithm
 int getNumber(int* perm) {
 	
 	int k = 0;
@@ -234,10 +250,12 @@ int permutationToNumber(char* permString) {
 	return k;
 }
 
+//returns the min of ints a and b
 int min(int a, int b) {
 	return a < b ? a : b;
 }
 
+//allocates all dynamically needed memory
 void allocateMemory() {
 	
 	permutationCount = factorial(N);
@@ -306,7 +324,9 @@ void allocateMemory() {
 	}
 }
 
+//frees all dynamically allocated memory
 void freeMemory() {
+	
 	if (rank == 0) {
 		free(data);
 	}
@@ -332,7 +352,8 @@ void freeMemory() {
 	}
 }
 
-//the main code
+//the main body of the code. does the checking if
+//the given permutation is valid or not
 void checkNumber() {
 	
 	//start timing for the total time
@@ -400,6 +421,7 @@ void checkNumber() {
 	//start timing the main calculation loop
 	startTimer();
 	
+	//same as in serial, just using locak rank data
 	for (int i = 0; i < localLength-N+1; i++) {
 		int k = permutationToNumber(rankData+i);
 		
@@ -422,10 +444,14 @@ void checkNumber() {
 	
 	double rankReduceTime = stopGetTimer();
 
+	//collect all the recorded times so we can find the largest times
 	MPI_Gather(&rankComputationTime, 1, MPI_DOUBLE, computationTimes, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 	MPI_Gather(&rankReduceTime, 1, MPI_DOUBLE, reduceTimes, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 	
 	if (rank == 0) {
+		
+		//find the rank with the largest time, and it's time
+		//both for computation and reduce times
 		
 		double maxReduceTime = reduceTimes[0];
 		int maxReduceTimeIndex = 0;
@@ -453,6 +479,7 @@ void checkNumber() {
 		//start timing for rank 0 checking the checklist
 		startTimer();
 		
+		//same as serial, but using fullChecklist
 		int good = 1;
 		printf("checking number...\n");
 		for (int i = 0; i < permutationCount; i++) {
@@ -483,7 +510,6 @@ void checkNumber() {
 }
 
 int main(int argc, char** argv) {
-	
 	MPI_Init(&argc, &argv);
 	
 	MPI_Comm_size(MPI_COMM_WORLD, &numRanks);

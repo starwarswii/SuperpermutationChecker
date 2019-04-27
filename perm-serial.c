@@ -25,6 +25,7 @@ int length;
 //number of symbols
 int N;
 
+//holds all the data
 char* data;
 
 //should contain all ones if has all permutations
@@ -32,6 +33,8 @@ char* data;
 char* checklist;
 int permutationCount;
 
+//returns n!
+//used for setting permutationCount
 int factorial(int n) {
 	
 	int result = 1;
@@ -101,6 +104,8 @@ char* outString;
 
 //returns the permutation corresponding
 //to the given number k
+//uses Antoine Comeau's version of
+//Keith Schwarz's Factoradic Permutation Algorithm
 int* getPermutation(int k) {
 	int ind;
 	int m = k;
@@ -120,6 +125,8 @@ int* getPermutation(int k) {
 	return permuted;
 }
 
+//given a number, returns a permutation as
+//a non-null terminated string of length N
 char* numberToPermutation(int k) {
 	int* p = getPermutation(k);
 	
@@ -129,6 +136,8 @@ char* numberToPermutation(int k) {
 }
 
 //returns the number corresponding to the given permutation
+//uses Antoine Comeau's version of
+//Keith Schwarz's Factoradic Permutation Algorithm
 int getNumber(int* perm) {
 	
 	int k = 0;
@@ -168,6 +177,7 @@ int permutationToNumber(char* permString) {
 	return k;
 }
 
+//allocates all dynamically needed memory
 void allocateMemory() {
 	
 	permutationCount = factorial(N);
@@ -186,6 +196,7 @@ void allocateMemory() {
 	
 }
 
+//frees all dynamically allocated memory
 void freeMemory() {
 	free(data);
 	free(checklist);
@@ -198,24 +209,33 @@ void freeMemory() {
 	free(outString);
 }
 
-//the main code
+//the main body of the code. does the checking if
+//the given permutation is valid or not
 void checkNumber() {
 	
+	//start timing
 	long long startTime = GetTimeBase();
 	
+	//iterate over all possible permutation positions
 	for (int i = 0; i < length-N+1; i++) {
+		//just simply generate the number
 		int k = permutationToNumber(data+i);
 		
+		//then check it off if it's valid
 		if (k != -1) {
 			checklist[k] = 1;
 		}
 		
 	}
 	
+	
+	//now we verify all checkboxes have been checked
 	int good = 1;
 	printf("checking number...\n");
 	for (int i = 0; i < permutationCount; i++) {
+		//if we find an unseen permutation
 		if (!checklist[i]) {
+			//determine what it is and output it
 			char* perm = numberToPermutation(i);
 			printf("missing permutation number %d: [%.*s]\n", i, N, perm);
 			good = 0;
@@ -228,6 +248,7 @@ void checkNumber() {
 		printf("number is not good\n");
 	}
 	
+	//stop timing and print
 	long long endTime = GetTimeBase();
 	double totalTime = ((double)(endTime-startTime))/frequency;
 	printf("time:\n");
@@ -236,15 +257,18 @@ void checkNumber() {
 }
 
 int main(int argc, char** argv) {
-	
 	MPI_Init(&argc, &argv);
 	
+	//these are local variables as this is a serial program
+	//we only use them here in main to check if someone's attempting
+	//to run this program with more than one rank
 	int numRanks;
 	int rank;
 	
 	MPI_Comm_size(MPI_COMM_WORLD, &numRanks);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 	
+	//only allow running with one rank
 	if (numRanks > 1) {
 		if (rank == 0) {
 			printf("error: this is the serial version, and should only be run with one rank\n");	
